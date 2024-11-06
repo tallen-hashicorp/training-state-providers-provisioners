@@ -3,7 +3,7 @@ provider "aws" {
   region = "us-west-2"  # Replace with your preferred region
 }
 
-# Import
+# ----Import----
 
 # import {
 #  to = aws_s3_bucket.example
@@ -14,7 +14,7 @@ resource "aws_s3_bucket" "example" {
   bucket = "tallen-massive-test-bucket"  # Unique bucket name
 }
 
-# Moved
+# ----Moved----
 
 # resource "aws_s3_bucket" "new" {
 #   bucket = "tallen-massive-test-bucket"  # Unique bucket name
