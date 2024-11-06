@@ -1,7 +1,7 @@
-# training-state-providers-provisioners
+# Part 3 - State, Providers & Provisioners
 
 # Terraform State
-Terraform is a stateful application. This means that it keeps track of everything you build inside of a state file. You will see the terraform.tfstate and terraform.tfstate.backup files that appear inside your working directory when running Terraform locally. The state file is Terraform's source of record for everything it knows about.
+Terraform is a stateful application, which means it keeps track of all resources it manages in a state file. This state file (`terraform.tfstate`) records the exact infrastructure Terraform has created, along with their current configurations. It serves as the single source of truth for Terraform, enabling it to detect changes and maintain the desired state.
 
 ```hcl
 {
@@ -16,276 +16,178 @@ Terraform is a stateful application. This means that it keeps track of everythin
 ```
 
 ## State Storage - Local & Cloud
-By default, Terraform stores state locally in a JSON file on disk
-```hcl
-terraform {
-required_providers {
-   azurerm = {
-     source = "hashicorp/azurerm"
-     version = "3.87.0"
-   }
-   google = {
-     source = "hashicorp/google"
-     version = "5.11.0"
-   }
- }
-}
-```
+By default, Terraform stores state locally in a JSON file (`terraform.tfstate`) on disk. However, for collaborative environments, storing the state remotely (e.g., in Terraform Cloud, S3, or other supported backends) is recommended to enable state sharing, locking, and versioning.
 
 ```hcl
 terraform {
- cloud {
-   organization = "danny-hashicorp"
-   workspaces {
-     name = "nomura-terraform-101"
-   }
- }
- required_providers {
-   aws = {
-     source  = "hashicorp/aws"
-     version = ">=4.60.0"
-   }
- }
+  required_providers {
+     azurerm = {
+       source = "hashicorp/azurerm"
+       version = "3.87.0"
+     }
+     google = {
+       source = "hashicorp/google"
+       version = "5.11.0"
+     }
+  }
 }
 ```
 
-## Why sharing state is good…
-* Collaborate on values from infrastructure created by other projects
-* Separating state isolates the impact of Terraforms actions
-* Allows for collaboration across functional teams
-* Output values in remote state can be shared in other configurations
-* Allows infrastructure to be decomposed into smaller components
-
-## Sharing local state
-Reading state from another project can be accomplished with the `terraform.remote_state` data source config depends on the backend but could be a path to a file or the name of an S3 bucket, or the API key to a remote server
+Example of using Terraform Cloud for state storage:
 ```hcl
-# Read state from another Terraform config’s state
+terraform {
+  cloud {
+    organization = "danny-hashicorp"
+    workspaces {
+      name = "nomura-terraform-101"
+    }
+  }
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = ">=4.60.0"
+    }
+  }
+}
+```
+
+### Benefits of Remote State
+* Enables collaboration on infrastructure values across teams.
+* Isolates the impact of Terraform actions by separating states.
+* Facilitates sharing output values with other configurations.
+* Supports decomposing infrastructure into smaller, more manageable components.
+
+## Sharing State Across Configurations
+Sharing state from another project can be achieved with the `terraform_remote_state` data source. This approach allows configurations to read outputs from another Terraform state file, enabling modular and scalable architecture.
+
+```hcl
 data "terraform_remote_state" "vpc" {
-backend = "local"
-config {
-  path = "../shared-vpc/terraform.tfstate"
+  backend = "local"
+  config {
+    path = "../shared-vpc/terraform.tfstate"
+  }
 }
+
+# Example of using remote state data
+output "vpc_cidr" {
+  value = data.terraform_remote_state.vpc.cidr_block
 }
-...
-# Elsewhere, use outputs from the state
-data.terraform_remote_state.vpc.cidr_block
 ```
 
 ## State Locking
-Avoids corrupted Terraform state from concurrent writes. Locking is important as it prevents multiple processes or people running Terraform operations concurrently
-* Multiple processes or people could run Terraform operations at the same time resulting in concurrent operations
-* Avoids corrupted Terraform state from concurrent writes
-* Automatic if supported by the backend
-* If state locking fails, the Terraform run will not continue
+Terraform automatically locks state files to prevent corruption from concurrent operations. This feature is essential in collaborative environments to avoid conflicts or unexpected resource changes.
 
+* State locking is automatic if supported by the backend.
+* If state locking fails, Terraform will abort the run to prevent issues.
+
+Example error:
 ```
 Error: Error locking state: Error acquiring the state lock: resource temporarily unavailable
 Lock Info:
  ID:        af5f3bce-b54b-5dda-dad3-9fb2c2614d34
- Path:      terraform.tfstate
- Operation: OperationTypePlan
- Who:       test@Stest.local
- Version:   0.13.5
- Created:   2021-05-11 19:33:16.029636 +0000 UTC
- Info:
-Terraform acquires a state lock to protect the state from being written
-by multiple users at the same time. Please resolve the issue above and try
-again. For most commands, you can disable locking with the "-lock=false"
-flag, but this is not recommended.
 ```
 
 ## Sensitive Data in State
-Committing passwords or sensitive information directly in Terraform code poses a significant security risk, as this data can end up stored in the Terraform state file
-* Data Passwords
-* User Passwords
-* Private Keys
+Since Terraform state can contain sensitive information (e.g., passwords, private keys), it’s critical to secure it properly. Always use secure backends like Terraform Cloud, AWS S3 with encryption, or Vault to avoid leaking sensitive data.
+
+* Encrypt state files, especially when stored in remote backends.
+* Avoid storing secrets directly in Terraform configurations, use Vault or AWS Secrets Manager.
 
 ## Terraform State CLI Commands
-The Terraform state CLI commands provide functionalities to inspect, manipulate, and manage the state files, enabling actions such as listing resources, pulling the current state, removing resources, and migrating state files between different backends.
-* Commands to affect state:
-    * list
-    * mv
-    * show
-    * rm
+The Terraform CLI provides several state-related commands that allow you to inspect, modify, and manage state files.
+
+* `list` - Lists all resources in the current state.
+* `mv` - Moves a resource to a new address.
+* `show` - Shows details of a specific resource in the state.
+* `rm` - Removes a resource from the state file without destroying it.
 
 ```bash
-state-providers-provisioners % terraform state list
-data.cloudinit_config.boundary_ingress_worker
-data.cloudinit_config.ssh_trusted_ca
-data.http.current
-aws_instance.boundary_ingress_worker
-aws_instance.boundary_public_target
-aws_internet_gateway.boundary_ingress_worker_ig
-aws_network_interface.boundary_public_target_ni
-aws_route_table.boundary_ingress_worker_public_rt
-aws_route_table_association.boundary_ingress_worker_public_rt_associate
-aws_security_group.boundary_ingress_worker_ssh
-aws_security_group.static_target_sg
+terraform state list
+aws_instance.my_instance
+aws_s3_bucket.my_bucket
 ```
 
-## Import
-Terraform has the ability to import state for existing resources
-* Not all resources can be imported (consult documentation at https://registry.terraform.io/)
-* Before Terraform v1.5.0 resources had to be imported one at a time.
-* New import{} block can import more than one resource at a time
-* Can see what the proposed import would do before importing
+## Importing Existing Resources
+Terraform can import existing resources into the state file to start managing them. This is useful for resources created manually or by other tools.
 
-## Import Resources
-You may need to import existing resource configuration into Terraform state.
+* Import support varies by provider, so check documentation.
+* As of v1.5.0, you can use an `import` block for bulk imports.
 
-Terraform CLI has commands to assist with this:
-
-```bash
-terraform show -json
-terraform import aws_instance.example i-001c08da04605c967
-terraform show -no-color > compute.tf
-```
-
-## Bulk Import
-You can add an import block to any Terraform configuration file. A common pattern is to create an imports.tf file, or to place each import block beside the resource block it imports into
 ```hcl
 import {
- to = aws_instance.example
- id = "i-abcd1234"
-}
-
-resource "aws_instance" "example" {
- # (other resource arguments...)
-}
-```
-
-## Terraform Refresh
-terraform refresh - command reads the current settings from all managed remote objects and updates the Terraform state to match.
-A.K.A `terraform apply -refresh-only -auto-approve`
-`terraform apply -refresh-only` only added in v0.15.4 (2021)
-
-## Moved Blocks
-Informs Terraform of resource address changes in a configuration without using the CLI
-```hcl
-resource "aws_instance" "prod_web_compute" {
- ami               = "ami-09ee0944866c73f62"
- instance_type     = "t2.micro"
- availability_zone = "eu-west-2b"
-}
-
-moved {
- from = aws_instance.dev_web_compute
- to   = aws_instance.prod_web_compute
-}
-```
-
-## State in Terraform Enterprise/HCP Terraform
-Terraform Enterprise/Cloud stores state remotely for each Workspace
-* State versioning
-* Managed resource count
-* More secure way to share state through tfe_outputs data source
-    * Requires authentication for workspace output(s)
-Terraform Enterprise/HCP Terraform stores state remotely for each Workspace
-* State can contain sensitive data:
-    * DB passwords
-    * User passwords
-    * Private keys
-* Consider the state file as sensitive and manage accordingly
-
-# Migrating State to HCP Terraform
-* Setting up state remotely in HCP Terraform is very easy
-* Adding a cloud {} block you can store state in HCP Terraform
-    * Requires using terraform login command to save credentials locally
-    * If moving to an existing cloud workspace there cannot be any prior state versions
-    * State versions will be saved and are fully searchable ( with the right permissions )
-```hcl
-terraform {
- cloud {
-   organization = "danny-hashicorp"
-
-   workspaces {
-     name = "nomura-terraform-101"
-   }
- }
- required_providers {
-   aws = {
-     source  = "hashicorp/aws"
-     version = ">=4.60.0"
-   }
- }
+  to = aws_instance.example
+  id = "i-abcd1234"
 }
 ```
 
 ```bash
-$ terraform init
-Initializing HCP Terraform...
-Do you wish to proceed?
- As part of migrating to HCP Terraform, Terraform
- can optionally copy your current workspace state to
- the configured HCP Terraform workspace.
- Answer "yes" to copy the latest state snapshot to the
- configured HCP Terraform workspace.
- Answer "no" to ignore the existing state and just
- activate the configured HCP Terraform workspace with
- its existing state, if any.
- Should Terraform migrate your existing state?
- Enter a value: yes
+terraform import aws_instance.example i-001c08da04605c967
 ```
+
+## Refreshing State
+`terraform refresh` updates the state to match the actual settings of resources. It reads current resource settings from providers and updates the local state.
+
+## Moved Blocks
+Terraform's `moved` block allows renaming or moving resources without using CLI commands. It provides a way to modify configurations safely when resource addresses change.
+
+```hcl
+moved {
+  from = aws_instance.dev_web_compute
+  to   = aws_instance.prod_web_compute
+}
+```
+
+## State in Terraform Enterprise/Cloud (TFE)
+TFE securely stores state in remote workspaces, enabling collaboration, state versioning, and secure management of sensitive data.
+
+* Supports state versioning.
+* Uses `tfe_outputs` for secure access to workspace outputs.
+
+---
 
 # Providers
-* Terraform is logically split into two main parts:
-    * Terraform Core
-    * Terraform Plugins
-* Terraform providers define API interaction
-* Provider sourcing and configuration is very flexible
+Providers are plugins that enable Terraform to interact with different APIs and cloud platforms.
 
-Terraform relies on plugins called providers to interact with cloud providers, SaaS providers, and other APIs. Terraform configurations must declare what providers they require so that Terraform can install and use them
+* **Core**: The core is responsible for managing state, executing plans, and interacting with providers.
+* **Providers**: Each provider is responsible for managing specific resource types, e.g., AWS, Azure.
 
 ```hcl
 terraform {
- required_providers {
-   aws = {
-     source  = "hashicorp/aws"
-     version = "5.53.0"
-   }
- }
-}
-
-```
-
-## Multiple Provider Configuration
-Sometimes a local provider is developed to extend or change functionality as needed. One needs to distinguish between them to prevent namespace collisions
-
-```hcl
-terraform {
- required_providers {
-   hashicorp-http = {
-     source  = "hashicorp/http"
-     version = "~> 2.0"
-   }
-   mycorp-http = {
-     source  = "mycorp/http"
-     version = "~> 1.0"
-   }
- }
-}
-```
-
-## Terraform Provider Versions
-Versions can be defined using the Semantic Versioning Scheme (SemVer)
-```hcl
-terraform {
-required_providers {
-  aws = {
-    source  = "hashicorp/aws"
-    version = "5.53.0"
-   # version = ">=5.52.2"
-   # version = "<=5.53"
-   # version = "~>5.53.0"
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "5.53.0"
+    }
   }
- }
 }
 ```
+
 ## Provider Tiers
 | Tier      | Description                                                                                                                                                                                    | Namespace                         |
 |-----------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------|
 | 🟡 Official  | Official providers are owned and maintained by HashiCorp.                                                                                                                                      | `hashicorp`                       |
-| 🔷 Partner   | Partner providers are written, maintained, validated and published by third-party companies against their own APIs. To earn a partner provider badge, the partner must participate in the [HashiCorp Technology Partner Program](https://www.hashicorp.com/partners). | Third-party organization, e.g., `mongodb/mongodbatlas` |
-| ⚪ Community | Community providers are published to the Terraform Registry by individual maintainers, groups of maintainers, or other members of the Terraform community.                                     | Maintainer’s individual or organization account, e.g., `DeviaVir/gsuite` |
-| ⚫ Archived  | Archived providers are official or partner providers that are no longer maintained by HashiCorp or the community. This may occur if an API is deprecated or interest was low.                  | `hashicorp` or third-party        |
+| 🔷 Partner   | Partner providers are developed and maintained by third-party companies, often as part of the [HashiCorp Technology Partner Program](https://www.hashicorp.com/partners). | Third-party organization, e.g., `mongodb/mongodbatlas` |
+| ⚪ Community | Community providers are created by individuals or groups within the Terraform community.                                                               | Maintainer’s account, e.g., `DeviaVir/gsuite` |
+| ⚫ Archived  | Providers that are no longer maintained. This could happen due to deprecation or low usage.                                                            | `hashicorp` or third-party        |
 
+## Versioning Providers
+Provider versions are specified using semantic versioning, which helps control which provider version is used. Constraints ensure compatibility across Terraform configurations.
+
+```hcl
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.53.0"
+    }
+  }
+}
+```
+
+---
+
+## Additional Tips
+- **Remote State Backends**: Encourage using remote state backends, like Terraform Cloud or S3, for team projects to ensure state consistency and state-locking.
+- **Provider Documentation**: Always refer to provider documentation for specific configuration details, especially with frequently updated APIs.
+- **Security Practices**: Avoid storing sensitive data in the configuration files directly. Use secret management tools or dynamic credentials.
+- **Terraform Debugging**: Teach students to use the `TF_LOG` environment variable (e.g., `export TF_LOG=DEBUG`) for debugging Terraform issues.
